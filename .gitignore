@@ -1,0 +1,15 @@
+*.a
+*.d
+*.o
+*.so
+*.riscv
+*.log
+build/
+install/
+.cache/
+.idea/
+.vscode/
+target/
+test_run_dir/
+riscv-isa-sim/build/
+riscv-isa-sim/install/
