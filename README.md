@@ -83,6 +83,103 @@ These additional publications cover many of the internal components used in Chip
     * **Hammer**: E. Wang, et al., *ISQED'20*. [PDF](https://www.isqed.org/English/Archives/2020/Technical_Sessions/113.html).
     * **Hammer**: H. Liew, et al., *DAC'22*. [PDF](https://dl.acm.org/doi/abs/10.1145/3489517.3530672).
 
+## Project Additions: Spike Perceptron and BOOM/TAGE
+
+This repository also includes the local branch-prediction experiment artifacts used for the Spike/perceptron and BOOM/TAGE work.
+
+```text
+benchmarks/
+  nested_loop.c
+  data_dependent.c
+  multiply/
+    multiply_main.c
+    multiply.c
+    multiply.h
+    dataset1.h
+boom-tage/
+  BOOM/TAGE-related Scala snapshots and diff
+riscv-isa-sim/
+  Spike source with perceptron predictor support
+```
+
+The main Spike predictor files are:
+
+```text
+riscv-isa-sim/riscv/perceptron_predictor.h
+riscv-isa-sim/riscv/perceptron_predictor.cc
+```
+
+The command-line option is wired through:
+
+```text
+riscv-isa-sim/spike_main/spike.cc
+```
+
+Build Spike from the repository root:
+
+```bash
+cd riscv-isa-sim
+mkdir -p build
+cd build
+../configure --prefix=$PWD/../install
+make -j2 spike
+```
+
+On the EECS 251B Chipyard environment, use the course toolchain path:
+
+```bash
+export PATH=/scratch/eecs251b-aba/chipyard-jiaqihuang2025-glitch/.conda-env/bin:/scratch/eecs251b-aba/chipyard-jiaqihuang2025-glitch/.conda-env/riscv-tools/bin:$PATH
+```
+
+Build the small pk-based benchmarks:
+
+```bash
+riscv64-unknown-elf-gcc -O0 -static -o benchmarks/nested_loop.riscv benchmarks/nested_loop.c
+riscv64-unknown-elf-gcc -O0 -static -o benchmarks/data_dependent.riscv benchmarks/data_dependent.c
+```
+
+Run with proxy kernel:
+
+```bash
+riscv-isa-sim/build/spike --perceptron-stats /scratch/eecs251b-aba/chipyard-jiaqihuang2025-glitch/toolchains/riscv-tools/riscv-pk/build/pk benchmarks/nested_loop.riscv
+riscv-isa-sim/build/spike --perceptron-stats /scratch/eecs251b-aba/chipyard-jiaqihuang2025-glitch/toolchains/riscv-tools/riscv-pk/build/pk benchmarks/data_dependent.riscv
+```
+
+The `multiply` benchmark from `riscv-tests/benchmarks` is a bare-metal ELF. Run it directly with Spike, without `pk`:
+
+```bash
+riscv-isa-sim/build/spike --perceptron-stats multiply.riscv
+```
+
+Example result from the course environment:
+
+```text
+mcycle = 24094
+minstret = 24099
+Perceptron stats hart=0: branches=30408 mispredictions=1401 miss_rate=4.607%
+```
+
+`boom-tage/` contains a snapshot of the BOOM-side branch-predictor experiment files:
+
+```text
+boom-tage/config-mixins.scala
+boom-tage/core.scala
+boom-tage/perceptron.scala
+boom-tage/boom-working.diff
+```
+
+The printed percentage is branch miss rate:
+
+```text
+miss_rate = mispredictions / branches
+```
+
+It is not MPKI. To compute MPKI, also count committed instructions:
+
+```text
+MPKI = mispredictions * 1000 / committed_instructions
+```
+
 ## Acknowledgements
 
 This work is supported by the NSF CCRI ENS Chipyard Award #2016662.
