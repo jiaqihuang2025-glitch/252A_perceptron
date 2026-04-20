@@ -254,11 +254,11 @@ class BoomCore()(implicit p: Parameters) extends BoomModule
     new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
 //      ("I$ blocked",                        () => icache_blocked),
       ("nop",                               () => false.B),
-      // ("branch misprediction",              () => br_unit.brinfo.mispredict),
-      // ("control-flow target misprediction", () => br_unit.brinfo.mispredict &&
-      //                                             br_unit.brinfo.cfi_type === CFI_JALR),
-      ("flush",                             () => rob.io.flush.valid)
-      //("branch resolved",                   () => br_unit.brinfo.valid)
+      ("branch misprediction",              () => brupdate.b2.mispredict),
+      ("control-flow target misprediction", () => brupdate.b2.mispredict &&
+                                                    brupdate.b2.cfi_type === CFI_JALR),
+      ("flush",                             () => rob.io.flush.valid),
+      ("branch resolved",                   () => brinfos.map(_.valid).reduce(_||_))
     )),
 
     new freechips.rocketchip.rocket.EventSet((mask, hits) => (mask & hits).orR, Seq(
