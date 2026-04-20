@@ -65,3 +65,9 @@ class PerceptronMediumBoomConfig extends Config(
   new boom.common.WithPerceptronBPD ++
   new boom.common.WithNMediumBoomsNoBPD(1) ++
   new chipyard.config.AbstractConfig)
+
+class PerceptronLargeBoomConfig extends Config(
+  new boom.common.WithPerceptronBPD ++
+  new boom.common.WithNLargeBoomsNoBPD(1) ++
+  new chipyard.config.WithSystemBusWidth(128) ++
+  new chipyard.config.AbstractConfig)
