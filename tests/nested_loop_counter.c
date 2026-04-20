@@ -1,6 +1,7 @@
-#include <stdio.h>
 #include <stdint.h>
-#include "XOR_parity.h"
+#include <stdio.h>
+
+volatile uint64_t sink = 0;
 
 #define read_csr_safe(reg) ({ \
   register unsigned long __tmp; \
@@ -11,75 +12,72 @@
   unsigned long __v = (unsigned long)(val); \
   asm volatile ("csrw " #reg ", %0" :: "rK"(__v)); })
 
+static inline void run_nested_loop_test(int outer, int inner) {
+  for (int i = 0; i < outer; i++) {
+    for (int j = 0; j < inner; j++) {
+      sink += (uint64_t)(i + j);
+    }
+  }
+}
+
 int main(void) {
-  // Enable counters
   write_csr_safe(mcounteren, -1UL);
   write_csr_safe(scounteren, -1UL);
   write_csr_safe(mcountinhibit, 0);
 
-  // Reset counters
   write_csr_safe(mhpmcounter3, 0);
   write_csr_safe(mhpmcounter4, 0);
   write_csr_safe(mhpmcounter5, 0);
 
-  // Program events
-  // Event selector encoding: (mask << 8) | set_id
-  // set_id=1 -> BOOM branch-related event set in exu/core.scala
-  write_csr_safe(mhpmevent3, 0x201);   // branch misprediction (mask bit1)
-  write_csr_safe(mhpmevent4, 0x1001);  // branch resolved (mask bit4)
-  write_csr_safe(mhpmevent5, 0x401);   // control-flow target misprediction/JALR (mask bit2)
+  write_csr_safe(mhpmevent3, 0x201);
+  write_csr_safe(mhpmevent4, 0x1001);
+  write_csr_safe(mhpmevent5, 0x401);
 
-  // Read initial values
-  uint64_t p0   = read_csr_safe(mhpmcounter3);
-  uint64_t p2   = read_csr_safe(mhpmcounter4);
-  uint64_t p4   = read_csr_safe(mhpmcounter5);
+  uint64_t p0 = read_csr_safe(mhpmcounter3);
+  uint64_t p2 = read_csr_safe(mhpmcounter4);
+  uint64_t p4 = read_csr_safe(mhpmcounter5);
   uint64_t instret_i = read_csr_safe(minstret);
 
-  // -------- run benchmark here --------
-  run_xor_data_phase_test(1000ULL, 256);
-  // ------------------------------------
+  run_nested_loop_test(100, 100);
 
-  // Read final values
-  uint64_t p1   = read_csr_safe(mhpmcounter3);
-  uint64_t p3   = read_csr_safe(mhpmcounter4);
-  uint64_t p5   = read_csr_safe(mhpmcounter5);
+  uint64_t p1 = read_csr_safe(mhpmcounter3);
+  uint64_t p3 = read_csr_safe(mhpmcounter4);
+  uint64_t p5 = read_csr_safe(mhpmcounter5);
   uint64_t instret_f = read_csr_safe(minstret);
 
-  uint64_t mispredict_BR   = p1 - p0;
+  uint64_t mispredict_br = p1 - p0;
   uint64_t branch_resolved = p3 - p2;
-  uint64_t mispredict_JALR = p5 - p4;
-  uint64_t mispredict_total = mispredict_BR + mispredict_JALR;
-  uint64_t Ins_commit      = instret_f - instret_i;
+  uint64_t mispredict_jalr = p5 - p4;
+  uint64_t mispredict_total = mispredict_br + mispredict_jalr;
+  uint64_t ins_commit = instret_f - instret_i;
 
+  printf("nested_loop sink: %lu\n", (unsigned long)sink);
   printf("Branch Mispredict before = %lu after = %lu delta = %lu\n",
-         (unsigned long)p0, (unsigned long)p1, (unsigned long)mispredict_BR);
+         (unsigned long)p0, (unsigned long)p1, (unsigned long)mispredict_br);
   printf("Branch Resolved before = %lu after = %lu delta = %lu\n",
          (unsigned long)p2, (unsigned long)p3, (unsigned long)branch_resolved);
   printf("JALR Mispredict before = %lu after = %lu delta = %lu\n",
-         (unsigned long)p4, (unsigned long)p5, (unsigned long)mispredict_JALR);
-
+         (unsigned long)p4, (unsigned long)p5, (unsigned long)mispredict_jalr);
   printf("InstRet before = %lu after = %lu delta = %lu\n",
-         (unsigned long)instret_i, (unsigned long)instret_f, (unsigned long)Ins_commit);
+         (unsigned long)instret_i, (unsigned long)instret_f, (unsigned long)ins_commit);
 
-  if (Ins_commit != 0) {
-    uint64_t mpki_scaled      = (mispredict_total * 1000000ULL) / Ins_commit;
-    uint64_t mpki_br_scaled   = (mispredict_BR * 1000000ULL) / Ins_commit;
-    uint64_t mpki_jalr_scaled = (mispredict_JALR * 1000000ULL) / Ins_commit;
+  if (ins_commit != 0) {
+    uint64_t mpki_scaled = (mispredict_total * 1000000ULL) / ins_commit;
+    uint64_t mpki_br_scaled = (mispredict_br * 1000000) / ins_commit;
+    uint64_t mpki_jalr_scaled = (mispredict_jalr * 1000000) / ins_commit;
 
     printf("MPKI: %lu.%03lu\n",
            (unsigned long)(mpki_scaled / 1000),
            (unsigned long)(mpki_scaled % 1000));
-
     printf("Branch MPKI: %lu.%03lu\n",
            (unsigned long)(mpki_br_scaled / 1000),
            (unsigned long)(mpki_br_scaled % 1000));
-
     printf("JALR MPKI: %lu.%03lu\n",
            (unsigned long)(mpki_jalr_scaled / 1000),
            (unsigned long)(mpki_jalr_scaled % 1000));
 
     if (branch_resolved != 0) {
-      uint64_t miss_rate_scaled = (mispredict_BR * 10000ULL) / branch_resolved;
+      uint64_t miss_rate_scaled = (mispredict_br * 10000ULL) / branch_resolved;
       printf("Miss Rate (BR): %lu.%02lu%%\n",
              (unsigned long)(miss_rate_scaled / 100),
              (unsigned long)(miss_rate_scaled % 100));
@@ -90,7 +88,7 @@ int main(void) {
     printf("Instructions committed is zero\n");
   }
 
-  printf("Instructions Committed: %lu\n", (unsigned long)Ins_commit);
+  printf("Instructions Committed: %lu\n", (unsigned long)ins_commit);
 
   return 0;
 }

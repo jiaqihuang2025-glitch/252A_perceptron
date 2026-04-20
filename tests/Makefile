@@ -29,7 +29,7 @@ include libgloss.mk
 
 PROGRAMS = pwm blkdev accum charcount nic-loopback big-blkdev pingd \
            streaming-passthrough streaming-fir nvdla spiflashread spiflashwrite fft gcd \
-           hello mt-hello srambist perfcounter
+           hello mt-hello srambist perfcounter nested_loop_counter data_dependent_counter
 
 
 .DEFAULT_GOAL := default
