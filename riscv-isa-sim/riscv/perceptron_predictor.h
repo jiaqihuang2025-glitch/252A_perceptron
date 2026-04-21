@@ -13,6 +13,7 @@ public:
 
   bool predict(uint64_t pc) const;
   void train(uint64_t pc, bool actual_taken);
+  void reset();
 
 private:
   int index(uint64_t pc) const;

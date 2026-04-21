@@ -40,6 +40,7 @@ public:
   void set_debug(bool value);
   void set_histogram(bool value);
   void set_perceptron_stats(bool value);
+  void set_branch_predictor(processor_t::branch_predictor_kind_t kind);
   void add_device(reg_t addr, std::shared_ptr<abstract_device_t> dev);
 
   // Configure logging

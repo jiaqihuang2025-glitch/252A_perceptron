@@ -51,3 +51,11 @@ void perceptron_predictor_t::train(uint64_t pc, bool actual_taken)
   history.insert(history.begin(), actual_taken);
   history.pop_back();
 }
+
+void perceptron_predictor_t::reset()
+{
+  std::fill(bias.begin(), bias.end(), 0);
+  for (auto& row : weights)
+    std::fill(row.begin(), row.end(), 0);
+  std::fill(history.begin(), history.end(), false);
+}

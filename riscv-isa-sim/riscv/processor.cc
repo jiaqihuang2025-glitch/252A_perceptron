@@ -33,11 +33,13 @@ processor_t::processor_t(const isa_parser_t *isa, const cfg_t *cfg,
                          simif_t* sim, uint32_t id, bool halt_on_reset,
                          FILE* log_file, std::ostream& sout_)
   : debug(false), halt_request(HR_NONE), isa(isa), cfg(cfg), sim(sim), id(id), xlen(0),
-  histogram_enabled(false), perceptron_stats_enabled(false), log_commits_enabled(false),
+  histogram_enabled(false), perceptron_stats_enabled(false), roi_active(false),
+  log_commits_enabled(false), branch_predictor_kind(branch_predictor_kind_t::perceptron),
   log_file(log_file), sout_(sout_.rdbuf()), halt_on_reset(halt_on_reset),
   in_wfi(false), check_triggers_icount(false),
   impl_table(256, false), extension_enable_table(isa->get_extension_table()),
   perceptron_branch_count(0), perceptron_mispredictions(0),
+  perceptron_roi_instructions(0), perceptron_roi_start_instructions(0),
   last_pc(1), executions(1), TM(cfg->trigger_count)
 {
   VU.p = this;
@@ -93,16 +95,31 @@ processor_t::~processor_t()
 
   if (perceptron_stats_enabled) {
     const uint64_t instructions = state.minstret->read();
+    const uint64_t roi_instructions =
+      roi_active ? perceptron_roi_instructions + (instructions - perceptron_roi_start_instructions)
+                 : perceptron_roi_instructions;
     const double miss_rate = perceptron_branch_count == 0 ? 0.0 :
       (100.0 * perceptron_mispredictions) / perceptron_branch_count;
     const double mpki = instructions == 0 ? 0.0 :
       (1000.0 * perceptron_mispredictions) / instructions;
+    const char* predictor_name = "perceptron";
+    switch (branch_predictor_kind) {
+      case branch_predictor_kind_t::perceptron:
+        predictor_name = "perceptron";
+        break;
+      case branch_predictor_kind_t::tage:
+        predictor_name = "tage";
+        break;
+      case branch_predictor_kind_t::hybrid:
+        predictor_name = "hybrid";
+        break;
+    }
     fprintf(stderr,
-            "Perceptron stats hart=%" PRIu32 ": branches=%" PRIu64
+            "Branch predictor stats hart=%" PRIu32 ": predictor=%s branches=%" PRIu64
             " mispredictions=%" PRIu64 " miss_rate=%.3f%%"
-            " instructions=%" PRIu64 " mpki=%.3f\n",
-            id, perceptron_branch_count, perceptron_mispredictions, miss_rate,
-            instructions, mpki);
+            " instructions=%" PRIu64 " roi_instructions=%" PRIu64 " mpki=%.3f\n",
+            id, predictor_name, perceptron_branch_count, perceptron_mispredictions, miss_rate,
+            instructions, roi_instructions, mpki);
   }
 
   delete mmu;
@@ -628,21 +645,85 @@ void processor_t::set_perceptron_stats(bool value)
   perceptron_stats_enabled = value;
 }
 
+void processor_t::set_branch_predictor(branch_predictor_kind_t kind)
+{
+  branch_predictor_kind = kind;
+}
+
 void processor_t::enable_log_commits()
 {
   log_commits_enabled = true;
+}
+
+bool processor_t::handle_roi_ebreak()
+{
+  if (!perceptron_stats_enabled)
+    return false;
+
+  const reg_t marker = state.XPR[10];
+  if (marker == ROI_START_MARKER) {
+    roi_active = true;
+    perceptron_branch_count = 0;
+    perceptron_mispredictions = 0;
+    perceptron_roi_instructions = 0;
+    perceptron_roi_start_instructions = state.minstret->read();
+    perceptron_predictor.reset();
+    tage_predictor.reset();
+    return true;
+  }
+
+  if (marker == ROI_END_MARKER) {
+    if (roi_active)
+      perceptron_roi_instructions += state.minstret->read() - perceptron_roi_start_instructions;
+    roi_active = false;
+    return true;
+  }
+
+  return false;
 }
 
 void processor_t::note_conditional_branch(reg_t pc, bool actual_taken)
 {
   if (!perceptron_stats_enabled)
     return;
+  if (!roi_active)
+    return;
 
   perceptron_branch_count++;
-  const bool predicted_taken = perceptron_predictor.predict(pc);
+  bool predicted_taken = false;
+  switch (branch_predictor_kind) {
+    case branch_predictor_kind_t::perceptron:
+      predicted_taken = perceptron_predictor.predict(pc);
+      break;
+    case branch_predictor_kind_t::tage:
+      predicted_taken = tage_predictor.predict(pc);
+      break;
+    case branch_predictor_kind_t::hybrid: {
+      const bool tage_pred = tage_predictor.predict(pc);
+      if (tage_predictor.last_prediction_high_confidence()) {
+        predicted_taken = tage_pred;
+      } else {
+        predicted_taken = perceptron_predictor.predict(pc);
+      }
+      break;
+    }
+  }
+
   if (predicted_taken != actual_taken)
     perceptron_mispredictions++;
-  perceptron_predictor.train(pc, actual_taken);
+
+  switch (branch_predictor_kind) {
+    case branch_predictor_kind_t::perceptron:
+      perceptron_predictor.train(pc, actual_taken);
+      break;
+    case branch_predictor_kind_t::tage:
+      tage_predictor.train(pc, actual_taken);
+      break;
+    case branch_predictor_kind_t::hybrid:
+      tage_predictor.train(pc, actual_taken);
+      perceptron_predictor.train(pc, actual_taken);
+      break;
+  }
 }
 
 void processor_t::reset()

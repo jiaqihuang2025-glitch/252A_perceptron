@@ -15,6 +15,7 @@
 #include "csrs.h"
 #include "isa_parser.h"
 #include "perceptron_predictor.h"
+#include "tage_predictor.h"
 #include "triggers.h"
 #include "../fesvr/memif.h"
 #include "vector_unit.h"
@@ -193,6 +194,12 @@ struct state_t
 class processor_t : public abstract_device_t
 {
 public:
+  enum class branch_predictor_kind_t {
+    perceptron,
+    tage,
+    hybrid,
+  };
+
   processor_t(const isa_parser_t *isa, const cfg_t* cfg,
               simif_t* sim, uint32_t id, bool halt_on_reset,
               FILE *log_file, std::ostream& sout_); // because of command line option --log and -s we need both
@@ -204,7 +211,9 @@ public:
   void set_debug(bool value);
   void set_histogram(bool value);
   void set_perceptron_stats(bool value);
+  void set_branch_predictor(branch_predictor_kind_t kind);
   void enable_log_commits();
+  bool handle_roi_ebreak();
   bool get_log_commits_enabled() const { return log_commits_enabled; }
   void reset();
   void step(size_t n); // run for n cycles
@@ -323,7 +332,9 @@ private:
   unsigned xlen;
   bool histogram_enabled;
   bool perceptron_stats_enabled;
+  bool roi_active;
   bool log_commits_enabled;
+  branch_predictor_kind_t branch_predictor_kind;
   FILE *log_file;
   std::ostream sout_; // needed for socket command interface -s, also used for -d and -l, but not for --log
   bool halt_on_reset;
@@ -339,8 +350,13 @@ private:
   std::vector<insn_desc_t> instructions;
   std::unordered_map<reg_t,uint64_t> pc_histogram;
   perceptron_predictor_t perceptron_predictor;
+  tage_predictor_t tage_predictor;
   uint64_t perceptron_branch_count;
   uint64_t perceptron_mispredictions;
+  uint64_t perceptron_roi_instructions;
+  uint64_t perceptron_roi_start_instructions;
+  static constexpr reg_t ROI_START_MARKER = 1;
+  static constexpr reg_t ROI_END_MARKER = 2;
 
   static const size_t OPCODE_CACHE_SIZE = 8191;
   insn_desc_t opcode_cache[OPCODE_CACHE_SIZE];

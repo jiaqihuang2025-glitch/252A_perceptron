@@ -57,6 +57,7 @@ static void help(int exit_code = 1)
   fprintf(stderr, "  --log-cache-miss      Generate a log of cache miss\n");
   fprintf(stderr, "  --log-commits         Generate a log of commits info\n");
   fprintf(stderr, "  --perceptron-stats    Print online perceptron branch prediction stats\n");
+  fprintf(stderr, "  --bp=<name>           Branch predictor for stats: perceptron, tage, or hybrid [default perceptron]\n");
   fprintf(stderr, "  --extension=<name>    Specify RoCC Extension\n");
   fprintf(stderr, "                          This flag can be used multiple times.\n");
   fprintf(stderr, "  --extlib=<name>       Shared library to load\n");
@@ -291,6 +292,19 @@ static unsigned long atoul_nonzero_safe(const char* s)
   return res;
 }
 
+static processor_t::branch_predictor_kind_t parse_branch_predictor_kind(const char* s)
+{
+  if (strcmp(s, "perceptron") == 0)
+    return processor_t::branch_predictor_kind_t::perceptron;
+  if (strcmp(s, "tage") == 0)
+    return processor_t::branch_predictor_kind_t::tage;
+  if (strcmp(s, "hybrid") == 0)
+    return processor_t::branch_predictor_kind_t::hybrid;
+
+  fprintf(stderr, "Unsupported branch predictor '%s'. Use 'perceptron', 'tage', or 'hybrid'.\n", s);
+  exit(-1);
+}
+
 static std::vector<size_t> parse_hartids(const char *s)
 {
   std::string const str(s);
@@ -342,6 +356,7 @@ int main(int argc, char** argv)
   bool log_cache = false;
   bool log_commits = false;
   bool perceptron_stats = false;
+  auto branch_predictor_kind = processor_t::branch_predictor_kind_t::perceptron;
   const char *log_path = nullptr;
   std::vector<std::function<extension_t*()>> extensions;
   const char* initrd = NULL;
@@ -448,6 +463,8 @@ int main(int argc, char** argv)
                 [&](const char UNUSED *s){log_commits = true;});
   parser.option(0, "perceptron-stats", 0,
                 [&](const char UNUSED *s){perceptron_stats = true;});
+  parser.option(0, "bp", 1,
+                [&](const char* s){branch_predictor_kind = parse_branch_predictor_kind(s);});
   parser.option(0, "log", 1,
                 [&](const char* s){log_path = s;});
   FILE *cmd_file = NULL;
@@ -559,6 +576,7 @@ int main(int argc, char** argv)
   s.configure_log(log, log_commits);
   s.set_histogram(histogram);
   s.set_perceptron_stats(perceptron_stats);
+  s.set_branch_predictor(branch_predictor_kind);
 
   auto return_code = s.run();
 

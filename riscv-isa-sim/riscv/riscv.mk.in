@@ -38,6 +38,7 @@ riscv_install_hdrs = \
 	mmu.h \
 	platform.h \
 	processor.h \
+	tage_predictor.h \
 	rocc.h \
 	sim.h \
 	simif.h \
@@ -50,6 +51,7 @@ riscv_precompiled_hdrs = \
 
 riscv_srcs = \
 	perceptron_predictor.cc \
+	tage_predictor.cc \
 	processor.cc \
 	execute.cc \
 	dts.cc \

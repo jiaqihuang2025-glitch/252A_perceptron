@@ -301,6 +301,13 @@ void sim_t::set_perceptron_stats(bool value)
   }
 }
 
+void sim_t::set_branch_predictor(processor_t::branch_predictor_kind_t kind)
+{
+  for (size_t i = 0; i < procs.size(); i++) {
+    procs[i]->set_branch_predictor(kind);
+  }
+}
+
 void sim_t::configure_log(bool enable_log, bool enable_commitlog)
 {
   log = enable_log;

@@ -1,4 +1,7 @@
 require_extension(EXT_ZCA);
+if (p->handle_roi_ebreak()) {
+  set_pc(pc + insn_length(MATCH_C_EBREAK));
+} else
 if (!STATE.debug_mode && (
         (!STATE.v && STATE.prv == PRV_M && STATE.dcsr->ebreakm) ||
         (!STATE.v && STATE.prv == PRV_S && STATE.dcsr->ebreaks) ||
