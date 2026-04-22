@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 class perceptron_predictor_t
@@ -17,12 +18,12 @@ public:
 
 private:
   int index(uint64_t pc) const;
-  // Previous experiment helper for PC+history hashed indexing.
-  // uint64_t fold_history(size_t hist_len, unsigned width) const;
+  uint64_t fold_history(size_t hist_len, unsigned width) const;
   int sat_inc(int x) const;
   int sat_dec(int x) const;
 
   size_t hist_len;
+  int theta;
   int max_weight;
   int min_weight;
   std::vector<int> bias;
