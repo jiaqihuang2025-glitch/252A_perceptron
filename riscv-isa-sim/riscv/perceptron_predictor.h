@@ -10,7 +10,7 @@
 class perceptron_predictor_t
 {
 public:
-  perceptron_predictor_t(size_t n_entries = 1024, size_t hist_len = 32, unsigned w_bits = 8);
+  perceptron_predictor_t(size_t n_entries = 1024, size_t hist_len = 48, unsigned w_bits = 8);
 
   bool predict(uint64_t pc) const;
   void train(uint64_t pc, bool actual_taken);

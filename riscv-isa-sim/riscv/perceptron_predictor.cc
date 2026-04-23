@@ -40,10 +40,11 @@ perceptron_predictor_t::perceptron_predictor_t(size_t n_entries, size_t hist_len
 
 int perceptron_predictor_t::index(uint64_t pc) const
 {
-  // Original PC-only indexing:
-  // return static_cast<int>((pc >> 2) & (bias.size() - 1));
-
   const unsigned idx_bits = log2_pow2(bias.size());
+  // Folded-PC experiment kept here for reference:
+  // uint64_t pc_fold = (pc >> 2) ^ (pc >> 10) ^ (pc >> 18) ^ (pc >> 26);
+  // uint64_t hash = mix64(pc_fold ^ fold_history(hist_len, idx_bits));
+
   uint64_t hash = (pc >> 2) ^ fold_history(hist_len, idx_bits);
   hash ^= mix64(pc);
   return static_cast<int>(hash & (bias.size() - 1));
