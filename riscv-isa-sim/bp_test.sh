@@ -85,27 +85,123 @@ fi
 if [[ $# -eq 2 ]]; then
   BENCH_NAME=$2
 else
-  BENCH_NAME=$(basename "${SOURCE_FILE%.c}")
+  if [[ "$SOURCE_FILE" == "$BENCH_ROOT/embench-iot/src/"* ]]; then
+    BENCH_NAME=$(basename "$(dirname "$SOURCE_FILE")")
+  else
+    BENCH_NAME=$(basename "${SOURCE_FILE%.c}")
+  fi
 fi
 
 BUILD_DIR="$BENCH_ROOT/build/$BENCH_NAME"
 RISCV_TEST_DIR="$BENCH_ROOT/riscv_test"
 RESULT_DIR="$BENCH_ROOT/results/$BENCH_NAME"
-OBJ_FILE="$BUILD_DIR/$BENCH_NAME.o"
 ELF_FILE="$RISCV_TEST_DIR/$BENCH_NAME.riscv"
 SUMMARY_FILE="$RESULT_DIR/summary.txt"
+SUPPORT_OBJS=()
+EXTRA_CFLAGS=()
+BENCH_OBJS=()
+EXTRA_LIBS=()
 
 mkdir -p "$BUILD_DIR" "$RESULT_DIR" "$RISCV_TEST_DIR"
 
+if [[ "$SOURCE_FILE" == "$BENCH_ROOT/mibench/automotive/susan/"* ]]; then
+  EXTRA_LIBS+=(-lm)
+fi
+
+if [[ "$SOURCE_FILE" == "$BENCH_ROOT/embench-iot/src/wikisort/"* ]]; then
+  EXTRA_LIBS+=(-lm)
+fi
+
+if [[ "$SOURCE_FILE" == "$BENCH_ROOT/wrappers/stringsearch_baremetal.c" ]]; then
+  EXTRA_CFLAGS+=(-I"$BENCH_ROOT/mibench/office/stringsearch")
+fi
+
+if [[ "$SOURCE_FILE" == "$BENCH_ROOT/wrappers/patricia_baremetal.c" ]]; then
+  EXTRA_CFLAGS+=(-I"$BENCH_ROOT/mibench/network/patricia")
+fi
+
+if [[ "$SOURCE_FILE" == "$BENCH_ROOT/embench-iot/src/"* ]]; then
+  EMBENCH_ROOT="$BENCH_ROOT/embench-iot"
+  EMBENCH_SUPPORT_DIR="$EMBENCH_ROOT/support"
+  EMBENCH_BOARD_DIR="$EMBENCH_ROOT/examples/riscv64-spike"
+
+  EXTRA_CFLAGS+=(
+    -I"$EMBENCH_SUPPORT_DIR"
+    -I"$EMBENCH_BOARD_DIR"
+    -DWARMUP_HEAT=1
+    -DGLOBAL_SCALE_FACTOR=1
+  )
+
+  for support_src in main.c beebsc.c; do
+    support_obj="$BUILD_DIR/${support_src%.c}.o"
+    PATH="$RISCV_TOOLS:$PATH" \
+      "$CC" "${CFLAGS[@]}" "${EXTRA_CFLAGS[@]}" \
+      -I"$(dirname "$SOURCE_FILE")" \
+      -I"$TEST_SUPPORT_DIR" \
+      -c "$EMBENCH_SUPPORT_DIR/$support_src" -o "$support_obj"
+    SUPPORT_OBJS+=("$support_obj")
+  done
+
+  boardsupport_obj="$BUILD_DIR/boardsupport.o"
+  PATH="$RISCV_TOOLS:$PATH" \
+    "$CC" "${CFLAGS[@]}" "${EXTRA_CFLAGS[@]}" \
+    -I"$(dirname "$SOURCE_FILE")" \
+    -I"$TEST_SUPPORT_DIR" \
+    -c "$EMBENCH_BOARD_DIR/boardsupport.c" -o "$boardsupport_obj"
+  SUPPORT_OBJS+=("$boardsupport_obj")
+fi
+
 echo "[1/4] Compiling $SOURCE_FILE"
-PATH="$RISCV_TOOLS:$PATH" \
-  "$CC" "${CFLAGS[@]}" \
-  -I"$(dirname "$SOURCE_FILE")" \
-  -I"$TEST_SUPPORT_DIR" \
-  -c "$SOURCE_FILE" -o "$OBJ_FILE"
+if [[ "$SOURCE_FILE" == "$BENCH_ROOT/embench-iot/src/"* ]]; then
+  for bench_src in "$(dirname "$SOURCE_FILE")"/*.c; do
+    bench_obj="$BUILD_DIR/$(basename "${bench_src%.c}").o"
+    PATH="$RISCV_TOOLS:$PATH" \
+      "$CC" "${CFLAGS[@]}" \
+      "${EXTRA_CFLAGS[@]}" \
+      -I"$(dirname "$SOURCE_FILE")" \
+      -I"$TEST_SUPPORT_DIR" \
+      -c "$bench_src" -o "$bench_obj"
+    BENCH_OBJS+=("$bench_obj")
+  done
+else
+  bench_obj="$BUILD_DIR/$BENCH_NAME.o"
+  PATH="$RISCV_TOOLS:$PATH" \
+    "$CC" "${CFLAGS[@]}" \
+    "${EXTRA_CFLAGS[@]}" \
+    -I"$(dirname "$SOURCE_FILE")" \
+    -I"$TEST_SUPPORT_DIR" \
+    -c "$SOURCE_FILE" -o "$bench_obj"
+  BENCH_OBJS+=("$bench_obj")
+
+  if [[ "$SOURCE_FILE" == "$BENCH_ROOT/wrappers/stringsearch_baremetal.c" ]]; then
+    for extra_src in "$BENCH_ROOT/mibench/office/stringsearch/bmhasrch.c"; do
+      extra_obj="$BUILD_DIR/$(basename "${extra_src%.c}").o"
+      PATH="$RISCV_TOOLS:$PATH" \
+        "$CC" "${CFLAGS[@]}" \
+        "${EXTRA_CFLAGS[@]}" \
+        -I"$(dirname "$SOURCE_FILE")" \
+        -I"$TEST_SUPPORT_DIR" \
+        -c "$extra_src" -o "$extra_obj"
+      BENCH_OBJS+=("$extra_obj")
+    done
+  fi
+
+  if [[ "$SOURCE_FILE" == "$BENCH_ROOT/wrappers/patricia_baremetal.c" ]]; then
+    for extra_src in "$BENCH_ROOT/mibench/network/patricia/patricia.c"; do
+      extra_obj="$BUILD_DIR/$(basename "${extra_src%.c}").o"
+      PATH="$RISCV_TOOLS:$PATH" \
+        "$CC" "${CFLAGS[@]}" \
+        "${EXTRA_CFLAGS[@]}" \
+        -I"$(dirname "$SOURCE_FILE")" \
+        -I"$TEST_SUPPORT_DIR" \
+        -c "$extra_src" -o "$extra_obj"
+      BENCH_OBJS+=("$extra_obj")
+    done
+  fi
+fi
 
 PATH="$RISCV_TOOLS:$PATH" \
-  "$CC" "${LDFLAGS[@]}" "$OBJ_FILE" -o "$ELF_FILE"
+  "$CC" "${LDFLAGS[@]}" "${BENCH_OBJS[@]}" "${SUPPORT_OBJS[@]}" "${EXTRA_LIBS[@]}" -o "$ELF_FILE"
 
 echo "[2/4] ELF stored at $ELF_FILE"
 
